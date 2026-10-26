@@ -1,0 +1,11 @@
+# Versions used to train and export our models (the submission package itself only needs torch, numpy and Pillow,
+# which are available in the evaluation image pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime).
+torch==2.4.1
+torchvision==0.19.1
+numpy==2.4.6
+pillow>=10.0
+pyyaml==6.0.3
+transformers==4.57.6   # VitPose model classes (training / export only)
+safetensors==0.8.0
+pycocotools==2.0.11
+tqdm

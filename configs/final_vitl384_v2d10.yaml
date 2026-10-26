@@ -1,0 +1,87 @@
+# Bản nộp: ViTPose+-large 384x288 + crop_shrink, 4 epoch (đỉnh LOO của large ở ~8-10k bước), EMA có sao chép buffer BN, train fold final (cả 3 dataset). CHƯA có LOO xác nhận large > small.
+# Cấu hình mặc định Track 3 (pose estimation). data.root trỏ tới thư mục
+# "data/" của UPAR-Challenge-2027-Track3 (đã git clone riêng — KHÁC repo
+# UPAR-Challenge-2027 của Track 1/2, xem docs_3/strategy.md mục 5 về khả năng
+# dùng chung ảnh thô, CHƯA xác nhận trên server).
+
+data:
+  root: datasets/UPAR-Challenge-2027-Track3/data
+  num_workers: 16
+
+model:
+  # ViTPose+-small — baseline mẫu CHÍNH THỨC của BTC, checkpoint HuggingFace.
+  # Đổi sang usyd-community/vitpose-plus-base|large nếu còn thời gian/VRAM sau
+  # khi có kết quả LOO của -small (xem docs_3/strategy.md mục 6 lý do chọn
+  # -small trước thay vì ViT-L mặc định như Track 1/2).
+  backbone: pretrained/vitpose-l-hf   # ViTPose-L GỐC (chỉ COCO, init MAE ImageNet) — HỢP LỆ theo email BTC 2026-10; KHÔNG dùng ViTPose+
+  pretrained: true
+  input_size: [384, 288]   # test thật: small 256->384 = +0.0095 AP
+  grad_checkpointing: true
+  head_type: default        # TUỲ CHỌN (docs_3/strategy.md mục 7.5/7.1) — "default" = head pretrain gốc
+                             # ViTPose+ (hành vi cũ, không đổi). "fpn" = FPNHead lấy cảm hứng ViTDet
+                             # Simple Feature Pyramid. "simcc" = SimCCHead lấy cảm hứng SimCC/RTMPose/HRPVT
+                             # (coordinate classification thay heatmap — 2 nguồn độc lập xác nhận lợi thế
+                             # ở độ phân giải thấp). Cả "fpn"/"simcc" train head TỪ ĐẦU (backbone vẫn giữ
+                             # pretrain) — so LOO với "default" trước khi quyết định giữ.
+  simcc_split_ratio: 2       # chỉ dùng khi head_type=simcc — số bin/pixel heatmap (2 = mịn gấp đôi)
+  presence_head: false       # TUỲ CHỌN (docs_3/strategy.md mục 7.7, lấy cảm hứng ProbPose CVPR 2025) —
+                             # cộng thêm PresenceHead dự đoán "keypoint có nằm trong crop hay không",
+                             # dùng làm tín hiệu huấn luyện phụ trợ (CHƯA tích hợp vào decode/score cuối,
+                             # xem code_3/README.md). Hoạt động được với CẢ 3 head_type ở trên.
+
+train:
+  epochs: 20               # pose estimation thường cần nhiều epoch hơn classification
+                            # (gradient thưa hơn qua heatmap) — TRẦN, early_stop_patience chặn sớm hơn.
+  early_stop_patience: 6
+  batch_size: 16           # large@384 tốn VRAM -> 16, lr giảm theo căn bậc hai
+  lr_head: 3.5e-4
+  lr_backbone: 3.5e-5
+  weight_decay: 1.0e-4
+  amp: true
+  save_every_epoch: true      # lưu EMA mỗi epoch (epoch_1..N.pt)
+  scheduler: plateau
+  ema:
+    enable: true
+    decay: 0.9998
+    cpu_every: 10          # EMA trên CPU (tiết kiệm VRAM)
+  sigma: 2.0                # độ rộng Gaussian heatmap target khi target_type=gaussian — CHƯA tune, so LOO nếu đổi
+  target_type: gaussian     # TUỲ CHỌN (docs_3/strategy.md mục 7.7, lấy cảm hứng ProbPose CVPR 2025) —
+                             # "gaussian" = sigma cố định mọi keypoint (hành vi cũ, không đổi). "oks" =
+                             # hình dạng target theo ĐÚNG công thức OKS thật (sigma khác nhau theo loại
+                             # keypoint + object scale theo từng mẫu) — so LOO trước khi giữ. CHỈ áp dụng
+                             # khi model.head_type khác "simcc" (SimCC dùng simcc_sigma bên dưới, không
+                             # dùng target_type/sigma).
+  simcc_sigma: 4.0           # chỉ dùng khi model.head_type=simcc — độ rộng Gaussian soft-label THEO ĐƠN
+                             # VỊ BIN (đã mịn hơn pixel simcc_split_ratio lần), CHƯA tune, so LOO nếu đổi
+  presence_loss_weight: 1.0  # chỉ dùng khi model.presence_head=true — trọng số cộng presence_loss vào tổng loss
+  augment:
+    flip_prob: 0.5
+    quality_prob: 0.3
+    color_jitter: 0.25
+    illum_prob: 0.3
+    motion_prob: 0.2
+    lowres_prob: 0.2
+    occ_prob: 0.3
+    paste_prob: 0.2
+    scale_jitter: 0.25      # +-25% scale ngẫu nhiên
+    rotation_prob: 0.0      # TUỲ CHỌN (docs_3/strategy.md mục 7.4) — 0.0 = TẮT (mặc định, giữ baseline
+                             # so LOO công bằng). Đổi vd 0.5 để bật, cùng rotation_degrees bên dưới.
+    rotation_degrees: 30.0  # biên độ xoay ngẫu nhiên [-30,30] độ khi rotation_prob > 0
+    crop_shrink_prob: 0.3   # TUỲ CHỌN (docs_3/strategy.md mục 7.7, lấy cảm hứng ProbPose CVPR 2025) —
+                             # 0.0 = TẮT (mặc định). > 0: xác suất chủ động crop chặt hơn + lệch tâm,
+                             # đẩy 1 số keypoint ra NGOÀI vùng crop — dạy model tình huống "mất 1 phần
+                             # cơ thể" (bbox Track 3 gần full-crop, dễ gặp thật — xem mục 5).
+    crop_shrink_range: [0.5, 0.85]  # thu nhỏ scale còn 50-85% khi crop_shrink kích hoạt
+    center_jitter: 0.15     # TUỲ CHỌN — lệch tâm crop tối đa ±(center_jitter * kích thước box), vd 0.2.
+                             # Chỉ có tác dụng khi crop_shrink_prob > 0.
+  ohkm:                     # Online Hard Keypoint Mining (Chen et al. CPN 2018) — TUỲ CHỌN, mặc định TẮT
+    enable: false
+    topk: 8                 # chỉ lan truyền gradient qua 8/15 keypoint hiệu lực có loss cao nhất mỗi mẫu
+  tta_flip: false            # flip-test TTA lúc eval LOO (TUỲ CHỌN, mặc định TẮT — tốn gấp đôi compute eval)
+  eval_batch_size: 32
+  eval_subset: 3000          # eval mỗi epoch trên tập con cố định N ảnh (0 = full); eval đầy đủ 1 lần ở cuối
+  eval_workers: 16
+  eval_every: 1             # tính OKS-AP mỗi N epoch (coco_eval tốn hơn 1 epoch train một chút, 1 = mỗi epoch)
+
+output_dir: ./runs/final_vitl384_v2d10
+seed: 224

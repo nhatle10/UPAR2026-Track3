@@ -1,0 +1,52 @@
+data:
+  root: datasets/UPAR-Challenge-2027-Track3/data
+  num_workers: 16
+model:
+  backbone: hrnet_w48_pt18
+  pretrained: true
+  grad_checkpointing: false
+  head_type: default
+  simcc_split_ratio: 2
+  presence_head: false
+  input_size:
+  - 384
+  - 288
+train:
+  epochs: 10
+  early_stop_patience: 6
+  batch_size: 8
+  lr_head: 0.0001
+  lr_backbone: 0.0001
+  weight_decay: 0.0001
+  amp: true
+  scheduler: plateau
+  ema:
+    enable: true
+    decay: 0.9998
+    cpu_every: 10
+  sigma: 2.0
+  target_type: gaussian
+  simcc_sigma: 4.0
+  presence_loss_weight: 1.0
+  augment:
+    flip_prob: 0.5
+    scale_jitter: 0.25
+    rotation_prob: 0.0
+    rotation_degrees: 30.0
+    crop_shrink_prob: 0.3
+    crop_shrink_range:
+    - 0.5
+    - 0.85
+    center_jitter: 0.15
+  ohkm:
+    enable: false
+    topk: 8
+  tta_flip: false
+  eval_batch_size: 32
+  eval_subset: 3000
+  eval_workers: 16
+  eval_every: 1
+  target_encoding: legacy
+  save_every_epoch: true
+output_dir: ./runs/final_hrnetpt384
+seed: 42
