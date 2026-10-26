@@ -15,7 +15,7 @@ Only permitted pretraining sources are used (ImageNet-1K, COCO, PoseTrack18). Fi
 
 The submitted package is self-contained: TorchScript weights of the soup and the HRNet partner, plus `run.py` (the server API `predict_image(sample)`).
 
-1. Download `submission_track3_ens_soup22_hrpt18_sp4.zip` (1.38 GB, MD5 `54f91d079b3125ac348f4badd4bf8f7c`): **WEIGHTS_LINK**
+1. Download `submission_track3_ens_soup22_hrpt18_sp4.zip` (1.38 GB, MD5 `54f91d079b3125ac348f4badd4bf8f7c`): https://drive.google.com/file/d/1UEkah4AcEfZLWVmEnK5XxV3qI4KCPSLi/view?usp=sharing
 2. Unzip it and run it locally the same way the evaluation server does:
 
 ```bash
